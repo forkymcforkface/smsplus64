@@ -68,6 +68,49 @@ bool controller2IsInserted = false;
 
 bool loadedFromFlashcartMenu = false;
 
+static bool returnToPhosphor = false;
+static uint32_t phosphorIgrFrames = 0;
+
+#define PHOSPHOR_IGR_CFG_UNC ((volatile uint32_t *)0xB1FF0000)
+
+extern "C" __attribute__((noreturn)) void phosphor_igr_reboot(void);
+
+static bool phosphor_igr_poll(uint32_t buttons)
+{
+    uint32_t mask;
+    uint32_t hold;
+
+    if (!loadedFromFlashcartMenu || cart_type != CART_SC)
+    {
+        phosphorIgrFrames = 0;
+        return false;
+    }
+
+    mask = PHOSPHOR_IGR_CFG_UNC[0];
+    hold = PHOSPHOR_IGR_CFG_UNC[1];
+    if (!mask || !hold || (buttons & mask) != mask)
+    {
+        if (phosphorIgrFrames)
+        {
+            phosphorIgrFrames--;
+        }
+        return false;
+    }
+
+    if (phosphorIgrFrames < hold)
+    {
+        phosphorIgrFrames++;
+    }
+    if (phosphorIgrFrames < hold)
+    {
+        return false;
+    }
+
+    returnToPhosphor = true;
+    reset = true;
+    return true;
+}
+
 // Sega header https://www.smspower.org/Development/ROMHeader
 struct SegaHeader
 {
@@ -266,6 +309,11 @@ void processinput(DWORD *pdwPad1, DWORD *pdwPad2, DWORD *pdwSystem, bool ignorep
         auto &dst = (i == 0) ? *pdwPad1 : *pdwPad2;
 
         auto gp = gKeys.c[i].data >> 16;
+
+        if (i == 0 && phosphor_igr_poll(gp))
+        {
+            return;
+        }
 
         int smsbuttons = (DL_BUTTON(gp) ? INPUT_LEFT : 0) |
                          (DR_BUTTON(gp) ? INPUT_RIGHT : 0) |
@@ -834,6 +882,8 @@ int main()
         debugf("- Address: %p\n", info.rom);
         debugf("- isGameGear: %d\n", info.isGameGear);
         reset = false;
+        returnToPhosphor = false;
+        phosphorIgrFrames = 0;
         debugf("Init audio\n");
         audio_init(44100, 4);
         load_rom(info.rom, info.size, info.isGameGear);
@@ -852,6 +902,11 @@ int main()
         debugf("Freeing rom\n");
         free(info.rom);
 #endif
+        if (returnToPhosphor)
+        {
+            disable_interrupts();
+            phosphor_igr_reboot();
+        }
     }
     return 0;
 }
