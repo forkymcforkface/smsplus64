@@ -65,7 +65,7 @@ surface_t *_dc;
 // height is the full 240 lines the VI scans out. The blit scales into it - the
 // framebuffer itself is the same size whatever the upscale setting is.
 #define FB_HEIGHT 240
-static const resolution_t RESOLUTION_GAME = {SMS_WIDTH, FB_HEIGHT, false};
+static const resolution_t RESOLUTION_GAME = {SMS_WIDTH, FB_HEIGHT, INTERLACE_OFF};
 
 // CI8 frames that the SMS+ renderer writes scanlines into directly (see
 // render_line). The RDP reads one via DMA at end-of-frame and TLUTs it into
