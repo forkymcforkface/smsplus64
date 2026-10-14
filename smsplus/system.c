@@ -49,6 +49,16 @@ void system_init(int rate) {
     __builtin_memset(&input, 0, sizeof(t_input));
 }
 
+/* One frame of stereo samples.
+
+   This used to be malloc'ed here and freed on the next game's system_init(),
+   which left a heap pointer to carry across a whole game and the menu after it.
+   Any memory damage elsewhere then surfaced as a crash inside that free() -
+   reported from a flashcart as a misaligned read on a pointer of fill bytes -
+   with nothing wrong at the point it blew up. The size never varies, so the
+   buffer does not need to come off the heap at all. */
+static signed short sound_buffer[(SMS_AUD_RATE / 60) * 2];
+
 void sms_audio_init(int rate) {
     /* Clear sound context */
     __builtin_memset(&snd, 0, sizeof(t_snd));
@@ -60,27 +70,15 @@ void sms_audio_init(int rate) {
     /* Oops.. sound is disabled */
     if (!rate) return;
 
-    /* Calculate buffer size in samples */
+    /* Calculate buffer size in samples (per channel, per frame) */
     snd.bufsize = (rate / 60);
 
-    /* Sound output */
-    // snd.buffer[0] = (signed short int *) malloc(snd.bufsize * 2);
-    // snd.buffer[1] = (signed short int *) malloc(snd.bufsize * 2);
-    // if (!snd.buffer[0] || !snd.buffer[1]) return;
-    // __builtin_memset(snd.buffer[0], 0, snd.bufsize * 2);
-    // __builtin_memset(snd.buffer[1], 0, snd.bufsize * 2);
-
-    /* YM2413 sound stream */
-//    snd.fm_buffer = (signed short int *)malloc(snd.bufsize * 2);
-//    if(!snd.fm_buffer) return;
-//    memset(snd.fm_buffer, 0, snd.bufsize * 2);
-
-    /* SN76489 sound stream */
-//    snd.psg_buffer[0] = (signed short int *)malloc(snd.bufsize * 2);
-//    snd.psg_buffer[1] = (signed short int *)malloc(snd.bufsize * 2);
-//    if(!snd.psg_buffer[0] || !snd.psg_buffer[1]) return;
-//    memset(snd.psg_buffer[0], 0, snd.bufsize * 2);
-//    memset(snd.psg_buffer[1], 0, snd.bufsize * 2);
+    /* Stereo interleaved S16 output buffer: bufsize stereo pairs = bufsize*2
+       shorts. A rate the fixed buffer cannot hold plays no sound rather than
+       running off the end of it. */
+    if (snd.bufsize * 2 > (int)(sizeof(sound_buffer) / sizeof(sound_buffer[0]))) return;
+    snd.buffer = sound_buffer;
+    __builtin_memset(snd.buffer, 0, snd.bufsize * 2 * sizeof(short));
 
     /* Set up SN76489 emulation */
     SN76496_init(0, MASTER_CLOCK, 255, rate);
@@ -109,7 +107,8 @@ void system_reset(void) {
     vdp_reset();
     sms_reset();
     render_reset();
-    system_load_sram();
+    /* SG-1000 cartridges have no battery RAM */
+    if (!IS_SG) system_load_sram();
     if (snd.enabled) {
 //        OPLL_reset(opll) ;
 //        OPLL_reset_patch(opll,0) ;            /* if use default voice data. */ 
@@ -163,28 +162,14 @@ void system_load_state(void *fd) {
     /* Restore callbacks */
     z80_set_irq_callback(sms_irq_callback);
 
-    cpu_readmap[0] = cart.rom + 0x0000; /* 0000-3FFF */
-    cpu_readmap[1] = cart.rom + 0x2000;
-    cpu_readmap[2] = cart.rom + 0x4000; /* 4000-7FFF */
-    cpu_readmap[3] = cart.rom + 0x6000;
-    cpu_readmap[4] = cart.rom + 0x0000; /* 0000-3FFF */
-    cpu_readmap[5] = cart.rom + 0x2000;
-    cpu_readmap[6] = sms.ram;
-    cpu_readmap[7] = sms.ram;
-
-    cpu_writemap[0] = sms.dummy;
-    cpu_writemap[1] = sms.dummy;
-    cpu_writemap[2] = sms.dummy;
-    cpu_writemap[3] = sms.dummy;
-    cpu_writemap[4] = sms.dummy;
-    cpu_writemap[5] = sms.dummy;
-    cpu_writemap[6] = sms.ram;
-    cpu_writemap[7] = sms.ram;
-
-    sms_mapper_w(3, sms.fcr[3]);
-    sms_mapper_w(2, sms.fcr[2]);
-    sms_mapper_w(1, sms.fcr[1]);
-    sms_mapper_w(0, sms.fcr[0]);
+    if (IS_SG) {
+        /* Rebuilds ROM/RAM pages, detected RAM adaptor and mapper paging */
+        sg_memory_map();
+    } else {
+        /* Rebuilds ROM/RAM pages from the mapper registers; a rom without a
+           mapper gets its fixed map whatever registers the state holds */
+        sms_memory_map();
+    }
 
     /* Force full pattern cache update */
 //    is_vram_dirty = 1;

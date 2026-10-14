@@ -7,13 +7,10 @@
 
 #define SMS_WIDTH 256
 #define SMS_HEIGHT 192
+/* Rows of the CI8 frame: the Master System II's 224-line mode draws 32 more */
+#define SMS_MAX_HEIGHT 224
 #define SMS_AUD_RATE 44100
 #define SMS_FPS 60
-// rendering
-static uint8_t screenCropX = 0;
-static uint16_t screenBufferLine[256];
-static uint8_t smsBufferLine[SMS_WIDTH];
-
 // FH - 2019-06-30: Added support for RGB444 in stead of RGB565
 static int palette444[32];
 
@@ -33,7 +30,7 @@ typedef struct {
     uint8 paused;
     uint8 save;
     uint8 country;
-    uint8 port_3F;
+    uint8 port_3F;      /* SG-1000 (no port $3F): bit n set = RAM adaptor on page n */
     uint8 port_F2;
     uint8 use_fm;
     uint8 irq;
@@ -53,6 +50,10 @@ void sms_reset(void);
 int sms_irq_callback(int param);
 
 void sms_mapper_w(int address, int data);
+
+void sms_memory_map(void);
+
+void sg_memory_map(void);
 
 void cpu_reset(void);
 

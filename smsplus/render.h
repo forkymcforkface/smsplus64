@@ -14,6 +14,13 @@ void render_init(void);
 
 void render_reset(void);
 
+/* Fix the viewport and height of the frame about to be drawn. sms_frame() calls
+   it before the first line; render_frame_lines then holds 192 or 224 for the
+   blit. */
+void render_frame_start(void);
+
+extern int render_frame_lines;
+
 void render_bg_gg(int line);
 
 void render_bg_sms(int line);
@@ -21,6 +28,8 @@ void render_bg_sms(int line);
 void render_obj(int line);
 
 void render_line(int line);
+
+void render_line_collision(int line);
 
 void update_cache(void);
 
